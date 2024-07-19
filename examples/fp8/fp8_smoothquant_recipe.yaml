@@ -1,0 +1,7 @@
+quant_stage:
+    quant_modifiers:
+        QuantizationModifier:
+            ignore:
+                - "lm_head"
+            scheme: FP8
+            targets: ["Linear"]
