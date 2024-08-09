@@ -77,6 +77,7 @@ class GPTQWrapper(ModuleCompressionWrapper):
         final_shape = self.layer.weight.shape
         final_dtype = self.layer.weight.dtype
         W = self.layer.weight.data.clone()
+        TEST_ORIGINAL_WEIGHT = self.layer.weight.data.clone()
         from llmcompressor.pytorch.utils.helpers import tensor_sparsity
 
         if isinstance(self.layer, nn.Conv2d):
@@ -111,8 +112,8 @@ class GPTQWrapper(ModuleCompressionWrapper):
                 
                 # index of perm is the min of self.H
                 
-                # # to mimick group size
-                # perm = torch.arange(0, self.columns, dtype=torch.int)
+                # used to mimic
+                #perm = torch.arange(0, self.columns, dtype=torch.int)
 
 
                 W = W[:, perm]
@@ -205,11 +206,16 @@ class GPTQWrapper(ModuleCompressionWrapper):
                             observer = getattr(self.layer, "weight_observer", None)
                             observer.reset()
                             
+                            # Kyle: Hoist this out of the for loop to avoid using
+                            # the is_layer_updated_actorder flag
+
                             # update self.layer params with respect to g_idx
                             # update_layer_weight_quant_params(self.layer, g_idx)
+                            print((TEST_ORIGINAL_WEIGHT == self.layer.weight.data).all())
+                            breakpoint()
                             update_layer_weight_quant_params(self.layer, 
                                                              perm=perm, 
-                                                            # g_idx=g_idx,
+                                                             g_idx=g_idx,
                                                             )
                             
                             is_layer_updated_actorder = True
@@ -293,6 +299,7 @@ class GPTQWrapper(ModuleCompressionWrapper):
                 Q1[:, i] = q
                 Losses1[:, i] = (w - q) ** 2 / d**2
 
+                # update group weight based on error
                 err1 = (w - q) / d
                 w1_err = err1.unsqueeze(1).matmul(Hinv1[i, i:].unsqueeze(0))
                 if preserve_zeros:
@@ -300,6 +307,13 @@ class GPTQWrapper(ModuleCompressionWrapper):
                 else:
                     W1[:, i:] -= w1_err
                 Err1[:, i] = err1
+
+            # updates remaining weights THEORETICALLY
+            # but W is deep copied from layer.weight, but
+            # `update_layer_weight_quant_params` uses layer.weight, so doesn't
+            # actually reflect these updates?
+
+            # reading more, 
 
             W[:, i1:i2] = Q1
             Losses += torch.sum(Losses1, 1) / 2
